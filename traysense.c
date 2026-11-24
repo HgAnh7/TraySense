@@ -3,6 +3,9 @@
 #define COBJMACROS
 #define UNICODE
 #define _UNICODE
+#ifdef _MSC_VER
+#pragma execution_character_set("utf-8")
+#endif
 #include <windows.h>
 #include <shellapi.h>
 #include <pdh.h>
@@ -160,19 +163,15 @@ static int app_dir(wchar_t *out)
 
 #define APP      L"TraySense"
 #define REGKEY   L"Software\\TraySense"
-#define VERSION  "1.2"
-#define RELEASES L"https://github.com/DMTWEAKS/traysense/releases/latest"
-#define X_HANDLE L"@DMQ8_2"
-#define X_URL    L"https://x.com/DMQ8_2"
 #define RUNKEY   L"Software\\Microsoft\\Windows\\CurrentVersion\\Run"
 #define WM_TRAY  (WM_APP + 1)
 
 enum { M_CPU, M_CPUT, M_RAM, M_GPU, M_GPUT, M_VRAM, M_DISKT, M_CPUW, M_GPUW, M_DISKA, M_GPUCLK, M_MEMCLK, M_N };
 #define M_TRAYN (M_DISKT + 1)
-static const wchar_t *NAMES[M_N] = { L"CPU usage", L"CPU temperature", L"RAM usage",
-                                     L"GPU usage", L"GPU temperature", L"VRAM usage", L"SSD temperature",
-                                     L"CPU power", L"GPU power", L"Storage utilization",
-                                     L"GPU clock", L"VRAM clock" };
+static const wchar_t *NAMES[M_N] = { L"Mức dùng CPU", L"Nhiệt độ CPU", L"Mức dùng RAM",
+                                     L"Mức dùng GPU", L"Nhiệt độ GPU", L"Mức dùng VRAM", L"Nhiệt độ SSD",
+                                     L"Công suất CPU", L"Công suất GPU", L"Mức dùng ổ đĩa",
+                                     L"Xung nhịp GPU", L"Xung nhịp VRAM" };
 
 static const COLORREF COL_D[M_N] = { RGB(80,190,255), 0, RGB(185,145,255), RGB(118,215,90), 0, RGB(118,215,90), 0 };
 static const COLORREF COL_L[M_N] = { RGB(0,100,180),  0, RGB(110,60,200),  RGB(35,135,30),  0, RGB(35,135,30), 0 };
@@ -651,18 +650,18 @@ static int sha256_is(const BYTE *data, DWORD len, const BYTE *want)
 static int pawnio_install(const wchar_t **msg)
 {
     DWORD len = 0, w, code = 1;
-    if (!load_net()) { *msg = L"Couldn't load the Windows networking components."; return 0; }
+    if (!load_net()) { *msg = L"Không thể tải các thành phần mạng của Windows."; return 0; }
     BYTE *bin = http_get(PAWNIO_HOST, PAWNIO_PATH, &len);
-    if (!bin) { *msg = L"Couldn't download the PawnIO installer from GitHub. Check your internet connection."; return 0; }
+    if (!bin) { *msg = L"Không thể tải trình cài đặt PawnIO từ GitHub. Hãy kiểm tra kết nối Internet."; return 0; }
     if (!sha256_is(bin, len, PAWNIO_SHA256)) {
         HeapFree(GetProcessHeap(), 0, bin);
-        *msg = L"The downloaded PawnIO installer didn't match its known checksum, so it was not run.";
+        *msg = L"Trình cài đặt PawnIO đã tải xuống không khớp mã kiểm tra đã biết nên không được chạy.";
         return 0;
     }
     wchar_t dir[MAX_PATH], exe[MAX_PATH], cmd[MAX_PATH + 32];
     if (!app_dir(dir)) {
         HeapFree(GetProcessHeap(), 0, bin);
-        *msg = L"Couldn't create the TraySense folder in Program Files.";
+        *msg = L"Không thể tạo thư mục TraySense trong Program Files.";
         return 0;
     }
     _snwprintf(exe, MAX_PATH, L"%s\\PawnIO_setup.exe", dir); exe[MAX_PATH - 1] = 0;
@@ -670,7 +669,7 @@ static int pawnio_install(const wchar_t **msg)
     int wrote = f != INVALID_HANDLE_VALUE && WriteFile(f, bin, len, &w, NULL) && w == len;
     if (f != INVALID_HANDLE_VALUE) CloseHandle(f);
     HeapFree(GetProcessHeap(), 0, bin);
-    if (!wrote) { DeleteFileW(exe); *msg = L"Couldn't save the PawnIO installer."; return 0; }
+    if (!wrote) { DeleteFileW(exe); *msg = L"Không thể lưu trình cài đặt PawnIO."; return 0; }
 
     _snwprintf(cmd, MAX_PATH + 32, L"\"%s\" -install -silent", exe); cmd[MAX_PATH + 31] = 0;
     STARTUPINFOW si; PROCESS_INFORMATION pi;
@@ -681,7 +680,7 @@ static int pawnio_install(const wchar_t **msg)
         CloseHandle(pi.hProcess); CloseHandle(pi.hThread);
     }
     DeleteFileW(exe);
-    if (code != 0 && code != 3010) { *msg = L"The PawnIO installer reported an error."; return 0; }
+    if (code != 0 && code != 3010) { *msg = L"Trình cài đặt PawnIO báo lỗi."; return 0; }
     return 1;
 }
 
@@ -1070,14 +1069,14 @@ static HICON make_icon(int m, const wchar_t *txt)
 
 static void tip_for(int m, wchar_t *t)
 {
-    if (!g_ok[m]) { _snwprintf(t, 128, L"%s: n/a", NAMES[m]); return; }
+    if (!g_ok[m]) { _snwprintf(t, 128, L"%s: không có dữ liệu", NAMES[m]); return; }
     switch (m) {
     case M_RAM:  _snwprintf(t, 128, L"RAM: %.0f%%  (%.1f / %.1f GB)", g_val[m], g_ramUsed, g_ramTotal); break;
     case M_VRAM: _snwprintf(t, 128, L"VRAM: %.0f%%  (%.1f / %.1f GB)", g_val[m], g_vramUsed, g_vramTotal / 1073741824.0); break;
     case M_GPU:  _snwprintf(t, 128, L"GPU: %.0f%%  %s", g_val[m], g_gpuName); break;
-    case M_GPUT: _snwprintf(t, 128, L"GPU temp: %.0f\x00B0" L"C", g_val[m]); break;
-    case M_CPUT: _snwprintf(t, 128, L"CPU temp: %.0f\x00B0" L"C", g_val[m]); break;
-    case M_DISKT: _snwprintf(t, 128, L"SSD temp: %.0f\x00B0" L"C", g_val[m]); break;
+    case M_GPUT: _snwprintf(t, 128, L"Nhiệt độ GPU: %.0f\x00B0" L"C", g_val[m]); break;
+    case M_CPUT: _snwprintf(t, 128, L"Nhiệt độ CPU: %.0f\x00B0" L"C", g_val[m]); break;
+    case M_DISKT: _snwprintf(t, 128, L"Nhiệt độ SSD: %.0f\x00B0" L"C", g_val[m]); break;
     default:     _snwprintf(t, 128, L"CPU: %.0f%%", g_val[m]);
     }
     t[127] = 0;
@@ -1160,58 +1159,6 @@ static double st_phase(int up)
     return (double)g_stBytes * 8.0 / ((end - first) / 1000.0);
 }
 
-#define WM_UPDATE (WM_APP + 4)
-static char  g_newVer[16];
-static DWORD g_checkUpdates = 1;
-static volatile LONG g_updRunning;
-
-static int ver_cmp(const char *a, const char *b)
-{
-    for (int i = 0; i < 3; i++) {
-        int x = atoi(a), y = atoi(b);
-        if (x != y) return x < y ? -1 : 1;
-        while (*a && *a != '.') a++;
-        while (*b && *b != '.') b++;
-        if (*a) a++;
-        if (*b) b++;
-    }
-    return 0;
-}
-
-static DWORD WINAPI upd_main(void *unused)
-{
-    (void)unused;
-    DWORD len = 0;
-    BYTE *body = load_net() ? http_get(L"api.github.com", L"/repos/DMTWEAKS/traysense/releases/latest", &len) : NULL;
-    if (body) {
-        char tag[16] = { 0 };
-        const char *end = (const char *)body + len, *p = (const char *)body;
-        while (p + 12 < end && memcmp(p, "\"tag_name\":", 11)) p++;
-        if (p + 12 < end) {
-            p += 11;
-            while (p < end && (*p == ' ' || *p == '"' || *p == 'v' || *p == 'V')) p++;
-            int n = 0;
-            while (p < end && n < 15 && ((*p >= '0' && *p <= '9') || *p == '.')) tag[n++] = *p++;
-            if (n && ver_cmp(tag, VERSION) > 0) {
-                lstrcpynA(g_newVer, tag, sizeof g_newVer);
-                PostMessageW(g_wnd, WM_UPDATE, 0, 0);
-            }
-        }
-        HeapFree(GetProcessHeap(), 0, body);
-    }
-    g_updRunning = 0;
-    return 0;
-}
-
-static void check_updates(void)
-{
-    if (!g_checkUpdates || g_updRunning) return;
-    g_updRunning = 1;
-    HANDLE t = CreateThread(NULL, 64 * 1024, upd_main, NULL, STACK_SIZE_PARAM_IS_A_RESERVATION, NULL);
-    if (t) CloseHandle(t);
-    else g_updRunning = 0;
-}
-
 static DWORD WINAPI st_main(void *unused)
 {
     (void)unused;
@@ -1241,10 +1188,10 @@ static void speed_test(void)
     if (g_stRunning) return;
     RegGetValueW(HKEY_CURRENT_USER, REGKEY, L"SpeedTestOk", RRF_RT_REG_DWORD, NULL, &v, &sz);
     if (!v) {
-        if (MessageBoxW(g_wnd, L"The speed test downloads and uploads throwaway data from Cloudflare's speed test "
-                               L"server (speed.cloudflare.com) for a few seconds.\n\nOn a fast connection that can be "
-                               L"a few hundred MB, and games or downloads will slow down while it runs.\n\nRun it now?",
-                        APP L" \x2013 Speed test", MB_YESNO | MB_ICONQUESTION) != IDYES) return;
+        if (MessageBoxW(g_wnd, L"Kiểm tra tốc độ sẽ tải xuống và tải lên dữ liệu tạm thời từ máy chủ kiểm tra tốc độ "
+                               L"của Cloudflare (speed.cloudflare.com) trong vài giây.\n\nVới kết nối nhanh, dữ liệu có thể "
+                               L"lên tới vài trăm MB; trò chơi hoặc tải xuống sẽ chậm hơn khi đang kiểm tra.\n\nChạy ngay?",
+                        APP L" \x2013 Kiểm tra tốc độ", MB_YESNO | MB_ICONQUESTION) != IDYES) return;
         RegSetKeyValueW(HKEY_CURRENT_USER, REGKEY, L"SpeedTestOk", REG_DWORD, &one, sizeof one);
     }
     g_stRunning = 1;
@@ -1873,8 +1820,8 @@ static void bar_draw(int force)
     }
     if (g_stRunning || GetTickCount64() < g_stShowUntil) {
         sg[n].glyph = 1; sg[n].sh = G_NET; n++;
-        if (g_stRunning) seg_label(&sg[n++], L"Testing...", fg);
-        else if (g_stFailed) seg_label(&sg[n++], L"Test failed", fg);
+        if (g_stRunning) seg_label(&sg[n++], L"Đang kiểm tra...", fg);
+        else if (g_stFailed) seg_label(&sg[n++], L"Kiểm tra thất bại", fg);
         else {
             SEG *d = &sg[n++], *u = &sg[n++];
             d->c = u->c = fg; d->al = u->al = 255;
@@ -2033,21 +1980,21 @@ static int group_series(int gid, SERIES *o)
 #define ADD(mm, k, nm, c) if (g_mask >> (mm) & 1) { o[n].m = (mm); o[n].kind = (k); o[n].name = (nm); o[n].col = (c); n++; }
     COLORREF hot = RGB(255, 160, 60), pw = RGB(240, 200, 60), clk = RGB(80, 200, 190);
     if (gid == G_CPU) {
-        ADD(M_CPU, K_PCT, L"CPU usage", RGB(80, 190, 255));
-        ADD(M_CPUT, K_TEMP, L"CPU temperature", hot);
-        ADD(M_CPUW, K_WATT, L"CPU power", pw);
+        ADD(M_CPU, K_PCT, L"Mức dùng CPU", RGB(80, 190, 255));
+        ADD(M_CPUT, K_TEMP, L"Nhiệt độ CPU", hot);
+        ADD(M_CPUW, K_WATT, L"Công suất CPU", pw);
     } else if (gid == G_RAM) {
-        ADD(M_RAM, K_PCT, L"RAM usage", RGB(185, 145, 255));
+        ADD(M_RAM, K_PCT, L"Mức dùng RAM", RGB(185, 145, 255));
     } else if (gid == G_GPU) {
-        ADD(M_GPU, K_PCT, L"GPU usage", RGB(118, 215, 90));
-        ADD(M_GPUT, K_TEMP, L"GPU temperature", hot);
-        ADD(M_GPUW, g_gpuPowerPct ? K_PCT : K_WATT, g_gpuPowerPct ? L"GPU power (TDP)" : L"GPU power", pw);
-        ADD(M_GPUCLK, K_MHZ, L"GPU clock", clk);
-        ADD(M_VRAM, K_PCT, L"VRAM usage", RGB(118, 215, 90));
-        ADD(M_MEMCLK, K_MHZ, L"VRAM clock", clk);
+        ADD(M_GPU, K_PCT, L"Mức dùng GPU", RGB(118, 215, 90));
+        ADD(M_GPUT, K_TEMP, L"Nhiệt độ GPU", hot);
+        ADD(M_GPUW, g_gpuPowerPct ? K_PCT : K_WATT, g_gpuPowerPct ? L"Công suất GPU (TDP)" : L"Công suất GPU", pw);
+        ADD(M_GPUCLK, K_MHZ, L"Xung nhịp GPU", clk);
+        ADD(M_VRAM, K_PCT, L"Mức dùng VRAM", RGB(118, 215, 90));
+        ADD(M_MEMCLK, K_MHZ, L"Xung nhịp VRAM", clk);
     } else if (gid == G_DISK) {
-        ADD(M_DISKA, K_PCT, L"Storage utilization", RGB(150, 170, 255));
-        ADD(M_DISKT, K_TEMP, L"SSD temperature", hot);
+        ADD(M_DISKA, K_PCT, L"Mức dùng ổ đĩa", RGB(150, 170, 255));
+        ADD(M_DISKT, K_TEMP, L"Nhiệt độ SSD", hot);
     }
 #undef ADD
     return n;
@@ -2349,7 +2296,6 @@ static void save(void)
     RegSetKeyValueW(HKEY_CURRENT_USER, REGKEY, L"ShowOn", REG_DWORD, &g_where, sizeof g_where);
     RegSetKeyValueW(HKEY_CURRENT_USER, REGKEY, L"Position", REG_DWORD, &g_pos, sizeof g_pos);
     RegSetKeyValueW(HKEY_CURRENT_USER, REGKEY, L"Rows", REG_DWORD, &g_rows, sizeof g_rows);
-    RegSetKeyValueW(HKEY_CURRENT_USER, REGKEY, L"CheckUpdates", REG_DWORD, &g_checkUpdates, sizeof g_checkUpdates);
 }
 static void load(void)
 {
@@ -2379,21 +2325,8 @@ static void load(void)
     sz = sizeof v;
     if (!RegGetValueW(HKEY_CURRENT_USER, REGKEY, L"Rows", RRF_RT_REG_DWORD, NULL, &v, &sz) && v <= ROWS_TWO)
         g_rows = v;
-    sz = sizeof v;
-    if (!RegGetValueW(HKEY_CURRENT_USER, REGKEY, L"CheckUpdates", RRF_RT_REG_DWORD, NULL, &v, &sz))
-        g_checkUpdates = v != 0;
 }
 static int is_admin(void);
-
-static void open_link(const wchar_t *url)
-{
-    wchar_t ex[MAX_PATH];
-    UINT n = GetWindowsDirectoryW(ex, MAX_PATH);
-    if (is_admin() && n && n < MAX_PATH - 16) {
-        lstrcatW(ex, L"\\explorer.exe");
-        ShellExecuteW(NULL, L"open", ex, url, NULL, SW_SHOWNORMAL);
-    } else ShellExecuteW(NULL, L"open", url, NULL, NULL, SW_SHOWNORMAL);
-}
 
 static int is_admin(void)
 {
@@ -2438,8 +2371,8 @@ static void autostart_toggle(void)
     if (!n || n >= MAX_PATH) return;
     if (autostart_on()) {
         if (reg_dword(L"Task") && !is_admin()) {
-            if (MessageBoxW(g_wnd, L"TraySense starts as administrator at login. Turning that off needs administrator "
-                                   L"rights.\n\nRestart TraySense as administrator?", APP, MB_YESNO | MB_ICONQUESTION) == IDYES)
+            if (MessageBoxW(g_wnd, L"TraySense khởi động với quyền quản trị viên khi đăng nhập. Việc tắt tùy chọn này cần "
+                                   L"quyền quản trị viên.\n\nKhởi động lại TraySense với quyền quản trị viên?", APP, MB_YESNO | MB_ICONQUESTION) == IDYES)
                 relaunch_admin(L"/restart");
             return;
         }
@@ -2556,27 +2489,27 @@ static void cpu_temp_setup(int ask)
     SetEvent(g_wake);
     switch (g_pioState) {
     case PIO_OK:
-        if (!ask) MessageBoxW(g_wnd, L"CPU temperature is on.", APP, MB_ICONINFORMATION);
+        if (!ask) MessageBoxW(g_wnd, L"Đã bật nhiệt độ CPU.", APP, MB_ICONINFORMATION);
         return;
     case PIO_UNSUPPORTED:
     case PIO_FAILED:
     case PIO_NOMODULE:
-        if (!ask) MessageBoxW(g_wnd, L"CPU temperature isn't supported on this processor "
-                                     L"(Intel Core or AMD Ryzen / EPYC are supported).", APP, MB_ICONINFORMATION);
+        if (!ask) MessageBoxW(g_wnd, L"Bộ xử lý này không hỗ trợ nhiệt độ CPU "
+                                     L"(hỗ trợ Intel Core hoặc AMD Ryzen / EPYC).", APP, MB_ICONINFORMATION);
         return;
     case PIO_NOADMIN:
-        if (MessageBoxW(g_wnd, L"Reading the CPU temperature sensor needs administrator rights.\n\n"
-                               L"Restart TraySense as administrator? It will start that way automatically from now on.",
+        if (MessageBoxW(g_wnd, L"Đọc cảm biến nhiệt độ CPU cần quyền quản trị viên.\n\n"
+                               L"Khởi động lại TraySense với quyền quản trị viên? Từ giờ chương trình sẽ tự khởi động theo cách này.",
                         APP, MB_YESNO | MB_ICONQUESTION) == IDYES)
             relaunch_admin(L"/restart");
         return;
     default:
-        if (MessageBoxW(g_wnd, L"Show CPU temperature?\n\n"
-                               L"Windows doesn't let apps read the CPU's temperature sensor on its own, so TraySense "
-                               L"installs PawnIO: a small, signed, open-source driver (the one LibreHardwareMonitor uses). "
-                               L"It's verified before it runs and can be removed any time from Settings > Apps.\n\n"
-                               L"Windows will ask for permission.",
-                        APP L" \x2013 CPU temperature", MB_YESNO | MB_ICONQUESTION) == IDYES)
+        if (MessageBoxW(g_wnd, L"Hiển thị nhiệt độ CPU?\n\n"
+                               L"Windows không cho ứng dụng tự đọc cảm biến nhiệt độ của CPU, vì vậy TraySense "
+                               L"sẽ cài PawnIO: một trình điều khiển mã nguồn mở, nhỏ gọn và đã ký số (được LibreHardwareMonitor sử dụng). "
+                               L"Trình điều khiển được xác minh trước khi chạy và có thể gỡ bất kỳ lúc nào trong Cài đặt > Ứng dụng.\n\n"
+                               L"Windows sẽ yêu cầu cấp quyền.",
+                        APP L" \x2013 Nhiệt độ CPU", MB_YESNO | MB_ICONQUESTION) == IDYES)
             relaunch_admin(L"/restart /install-pawnio");
     }
 }
@@ -2585,70 +2518,61 @@ static void menu(void)
 {
     static const DWORD iv[3] = { 1000, 2000, 5000 };
     HMENU h = CreatePopupMenu(), sub = CreatePopupMenu();
-    if (g_newVer[0]) {
-        wchar_t u[64];
-        _snwprintf(u, 64, L"Update available: v%hs...", g_newVer);
-        u[63] = 0;
-        AppendMenuW(h, MF_STRING, 380, u);
-        AppendMenuW(h, MF_SEPARATOR, 0, NULL);
-    }
     for (int m = 0; m < M_N; m++) {
         wchar_t lbl[80];
         lstrcpyW(lbl, NAMES[m]);
         if (m >= M_TRAYN && g_mode == MODE_TRAY) continue;
-        if (m == M_CPUT && g_pioState == PIO_OK) lstrcatW(lbl, L"  (CPU sensor)");
-        else if (m == M_CPUW && g_pioState != PIO_OK) lstrcatW(lbl, L"  (needs CPU sensor)");
+        if (m == M_CPUT && g_pioState == PIO_OK) lstrcatW(lbl, L"  (cảm biến CPU)");
+        else if (m == M_CPUW && g_pioState != PIO_OK) lstrcatW(lbl, L"  (cần cảm biến CPU)");
         else if (m == M_GPUW && !pNvPower && !pNvEnergy && !pNvFields && !pAdlPMLog && !g_kmtPower) {
-            lstrcatW(lbl, L"  (not supported by this GPU)");
+            lstrcatW(lbl, L"  (GPU này không hỗ trợ)");
             AppendMenuW(h, MF_STRING | MF_GRAYED, 100 + m, lbl);
             continue;
         }
-        else if ((m == M_CPUT || m == M_GPUT || m == M_DISKT) && (g_mask >> m & 1) && !g_ok[m]) lstrcatW(lbl, L"  (no sensor found)");
+        else if ((m == M_CPUT || m == M_GPUT || m == M_DISKT) && (g_mask >> m & 1) && !g_ok[m]) lstrcatW(lbl, L"  (không tìm thấy cảm biến)");
         AppendMenuW(h, MF_STRING | ((g_mask >> m & 1) ? MF_CHECKED : 0), 100 + m, lbl);
     }
-    if (g_stRunning) AppendMenuW(h, MF_STRING | MF_GRAYED, 370, L"Speed test running...");
+    if (g_stRunning) AppendMenuW(h, MF_STRING | MF_GRAYED, 370, L"Đang kiểm tra tốc độ...");
     else if (g_stDown > 0) {
         wchar_t st[96], a[32], b[32];
         fmt_speed(a, 32, g_stDown);
         fmt_speed(b, 32, g_stUp);
-        _snwprintf(st, 96, L"Run speed test  (last: \x2193%s  \x2191%s)", a, b);
+        _snwprintf(st, 96, L"Kiểm tra tốc độ  (lần trước: \x2193%s  \x2191%s)", a, b);
         st[95] = 0;
         AppendMenuW(h, MF_STRING, 370, st);
-    } else AppendMenuW(h, MF_STRING, 370, L"Run speed test");
-    if (g_pioState != PIO_OK && g_pioState != PIO_UNSUPPORTED) AppendMenuW(h, MF_STRING, 320, L"Turn on CPU temperature...");
+    } else AppendMenuW(h, MF_STRING, 370, L"Kiểm tra tốc độ");
+    if (g_pioState != PIO_OK && g_pioState != PIO_UNSUPPORTED) AppendMenuW(h, MF_STRING, 320, L"Bật nhiệt độ CPU...");
     AppendMenuW(h, MF_SEPARATOR, 0, NULL);
-    AppendMenuW(h, MF_STRING | (g_mode == MODE_BAR ? MF_CHECKED : 0), 310, L"Big labels on taskbar");
+    AppendMenuW(h, MF_STRING | (g_mode == MODE_BAR ? MF_CHECKED : 0), 310, L"Nhãn lớn trên thanh tác vụ");
     if (g_mode == MODE_BAR) {
         HMENU on = CreatePopupMenu();
-        AppendMenuW(on, MF_STRING | (g_where == SHOW_MAIN ? MF_CHECKED : 0), 330, L"Main taskbar");
-        AppendMenuW(on, MF_STRING | (g_where == SHOW_ALL ? MF_CHECKED : 0), 331, L"All taskbars");
-        AppendMenuW(on, MF_STRING | (g_where == SHOW_OTHERS ? MF_CHECKED : 0), 332, L"Other monitors only");
-        AppendMenuW(h, MF_POPUP, (UINT_PTR)on, L"Show on");
+        AppendMenuW(on, MF_STRING | (g_where == SHOW_MAIN ? MF_CHECKED : 0), 330, L"Thanh tác vụ chính");
+        AppendMenuW(on, MF_STRING | (g_where == SHOW_ALL ? MF_CHECKED : 0), 331, L"Tất cả thanh tác vụ");
+        AppendMenuW(on, MF_STRING | (g_where == SHOW_OTHERS ? MF_CHECKED : 0), 332, L"Chỉ màn hình khác");
+        AppendMenuW(h, MF_POPUP, (UINT_PTR)on, L"Hiển thị trên");
         HMENU ps = CreatePopupMenu(), rw = CreatePopupMenu();
-        AppendMenuW(ps, MF_STRING | (g_pos == POS_TRAY ? MF_CHECKED : 0), 340, L"Next to tray");
-        AppendMenuW(ps, MF_STRING | (g_pos == POS_APPS ? MF_CHECKED : 0), 341, L"After apps");
-        AppendMenuW(ps, MF_STRING | (g_pos == POS_LEFT ? MF_CHECKED : 0), 342, L"Left side");
-        AppendMenuW(h, MF_POPUP, (UINT_PTR)ps, L"Position");
-        AppendMenuW(rw, MF_STRING | (g_rows == ROWS_AUTO ? MF_CHECKED : 0), 350, L"Auto");
-        AppendMenuW(rw, MF_STRING | (g_rows == ROWS_ONE ? MF_CHECKED : 0), 351, L"One row");
-        AppendMenuW(rw, MF_STRING | (g_rows == ROWS_TWO ? MF_CHECKED : 0), 352, L"Two rows");
-        AppendMenuW(h, MF_POPUP, (UINT_PTR)rw, L"Layout");
+        AppendMenuW(ps, MF_STRING | (g_pos == POS_TRAY ? MF_CHECKED : 0), 340, L"Cạnh khay hệ thống");
+        AppendMenuW(ps, MF_STRING | (g_pos == POS_APPS ? MF_CHECKED : 0), 341, L"Sau ứng dụng");
+        AppendMenuW(ps, MF_STRING | (g_pos == POS_LEFT ? MF_CHECKED : 0), 342, L"Bên trái");
+        AppendMenuW(h, MF_POPUP, (UINT_PTR)ps, L"Vị trí");
+        AppendMenuW(rw, MF_STRING | (g_rows == ROWS_AUTO ? MF_CHECKED : 0), 350, L"Tự động");
+        AppendMenuW(rw, MF_STRING | (g_rows == ROWS_ONE ? MF_CHECKED : 0), 351, L"Một hàng");
+        AppendMenuW(rw, MF_STRING | (g_rows == ROWS_TWO ? MF_CHECKED : 0), 352, L"Hai hàng");
+        AppendMenuW(h, MF_POPUP, (UINT_PTR)rw, L"Bố cục");
 
         int anyVert = 0;
         for (int i = 0; i < MAX_BARS; i++) if (g_bars[i].wnd && g_bars[i].vert) anyVert = 1;
-        AppendMenuW(h, MF_STRING, 311, anyVert ? L"Move up" : L"Move left");
-        AppendMenuW(h, MF_STRING, 312, anyVert ? L"Move down" : L"Move right");
-        AppendMenuW(h, MF_STRING, 313, L"Reset position");
+        AppendMenuW(h, MF_STRING, 311, anyVert ? L"Di chuyển lên" : L"Di chuyển sang trái");
+        AppendMenuW(h, MF_STRING, 312, anyVert ? L"Di chuyển xuống" : L"Di chuyển sang phải");
+        AppendMenuW(h, MF_STRING, 313, L"Đặt lại vị trí");
     }
-    AppendMenuW(sub, MF_STRING | (g_interval == 1000 ? MF_CHECKED : 0), 200, L"1 second");
-    AppendMenuW(sub, MF_STRING | (g_interval == 2000 ? MF_CHECKED : 0), 201, L"2 seconds");
-    AppendMenuW(sub, MF_STRING | (g_interval == 5000 ? MF_CHECKED : 0), 202, L"5 seconds (lowest power)");
-    AppendMenuW(h, MF_POPUP, (UINT_PTR)sub, L"Refresh rate");
-    AppendMenuW(h, MF_STRING | (autostart_on() ? MF_CHECKED : 0), 300, L"Start with Windows");
-    AppendMenuW(h, MF_STRING | (g_checkUpdates ? MF_CHECKED : 0), 381, L"Check for updates");
+    AppendMenuW(sub, MF_STRING | (g_interval == 1000 ? MF_CHECKED : 0), 200, L"1 giây");
+    AppendMenuW(sub, MF_STRING | (g_interval == 2000 ? MF_CHECKED : 0), 201, L"2 giây");
+    AppendMenuW(sub, MF_STRING | (g_interval == 5000 ? MF_CHECKED : 0), 202, L"5 giây (tiết kiệm điện nhất)");
+    AppendMenuW(h, MF_POPUP, (UINT_PTR)sub, L"Tần suất làm mới");
+    AppendMenuW(h, MF_STRING | (autostart_on() ? MF_CHECKED : 0), 300, L"Khởi động cùng Windows");
     AppendMenuW(h, MF_SEPARATOR, 0, NULL);
-    AppendMenuW(h, MF_STRING, 390, L"Follow " X_HANDLE L" on X");
-    AppendMenuW(h, MF_STRING, 399, L"Exit");
+    AppendMenuW(h, MF_STRING, 399, L"Thoát");
 
     POINT pt; GetCursorPos(&pt);
     SetForegroundWindow(g_wnd);
@@ -2685,9 +2609,6 @@ static void menu(void)
     else if (cmd >= 340 && cmd <= 342) { g_pos = cmd - 340; g_offset = 0; refresh(1); save(); }
     else if (cmd >= 350 && cmd <= 352) { g_rows = cmd - 350; refresh(1); save(); }
     else if (cmd == 370) speed_test();
-    else if (cmd == 380) open_link(RELEASES);
-    else if (cmd == 390) open_link(X_URL);
-    else if (cmd == 381) { g_checkUpdates = !g_checkUpdates; save(); if (g_checkUpdates) check_updates(); }
     else if (cmd == 320) cpu_temp_setup(0);
     else if (cmd == 399) DestroyWindow(g_wnd);
 }
@@ -2736,36 +2657,6 @@ static LRESULT CALLBACK wndproc(HWND w, UINT msg, WPARAM wp, LPARAM lp)
         refresh(0);
         if (g_graphBar) graph_draw();
         return 0;
-    case WM_TIMER:
-        if (wp == 4) {
-            DWORD one = 1;
-            KillTimer(w, 4);
-            if (reg_dword(L"Welcomed")) return 0;
-            RegSetKeyValueW(HKEY_CURRENT_USER, REGKEY, L"Welcomed", REG_DWORD, &one, sizeof one);
-            if (MessageBoxW(g_wnd, L"Thanks for using TraySense!\n\nFollow " X_HANDLE L" on X for updates, new features "
-                                   L"and sneak peeks?", APP, MB_YESNO | MB_ICONINFORMATION) == IDYES)
-                open_link(X_URL);
-            return 0;
-        }
-        if (wp == 3) KillTimer(w, 3);
-        check_updates();
-        return 0;
-    case WM_UPDATE: {
-        wchar_t m[300], skip[16] = L"";
-        DWORD sz = sizeof skip;
-        RegGetValueW(HKEY_CURRENT_USER, REGKEY, L"SkipVersion", RRF_RT_REG_SZ, NULL, skip, &sz);
-        wchar_t nv[16];
-        _snwprintf(nv, 16, L"%hs", g_newVer); nv[15] = 0;
-        if (!lstrcmpW(skip, nv)) return 0;
-        _snwprintf(m, 300, L"TraySense v%s is available (you have v%hs).\n\nOpen the download page?\n\n"
-                           L"Follow " X_HANDLE L" on X to see what's new.", nv, VERSION);
-        m[299] = 0;
-        if (MessageBoxW(g_wnd, m, APP, MB_YESNO | MB_ICONINFORMATION) == IDYES)
-            open_link(RELEASES);
-        else
-            RegSetKeyValueW(HKEY_CURRENT_USER, REGKEY, L"SkipVersion", REG_SZ, nv, (lstrlenW(nv) + 1) * sizeof(wchar_t));
-        return 0;
-    }
     case WM_SPEEDDONE:
         g_stRunning = 0;
         g_stFailed = !wp;
@@ -2830,8 +2721,8 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE prev, LPSTR cmd, int show)
         }
         if (tries > 40) {
             if (!restart)
-                MessageBoxW(NULL, L"TraySense is already running.\n\nRight click it on the taskbar and choose Exit, "
-                                  L"then open this one again.", APP, MB_ICONINFORMATION);
+                MessageBoxW(NULL, L"TraySense đang chạy.\n\nNhấp chuột phải vào ứng dụng trên thanh tác vụ và chọn Thoát, "
+                                  L"sau đó mở lại ứng dụng này.", APP, MB_ICONINFORMATION);
             return 0;
         }
         Sleep(150);
@@ -2885,9 +2776,6 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE prev, LPSTR cmd, int show)
                     WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
 
     g_wake = CreateEventW(NULL, FALSE, FALSE, NULL);
-    SetTimer(g_wnd, 3, 30000, NULL);
-    SetTimer(g_wnd, 4, 90000, NULL);
-    SetTimer(g_wnd, 2, 24u * 60 * 60 * 1000, NULL);
     HANDLE th = CreateThread(NULL, 64 * 1024, sampler, NULL, STACK_SIZE_PARAM_IS_A_RESERVATION, NULL);
     refresh(1);
 
